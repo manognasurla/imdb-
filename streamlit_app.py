@@ -5,9 +5,9 @@ from textblob import TextBlob
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
-# ✅ Load IMDb Movie Dataset (From Kaggle CSV)
+# ✅ Load IMDb Movie Dataset 
 @st.cache_data
 def load_movie_data():
     return pd.read_csv("imdb_movies.csv")  # Ensure this file is in your repo
@@ -16,19 +16,19 @@ movies_df = load_movie_data()
 
 # ✅ Preprocessing: Convert text descriptions into numerical features
 tfidf_vectorizer = TfidfVectorizer(stop_words="english")
-X = tfidf_vectorizer.fit_transform(movies_df["description"].fillna(""))
+X = tfidf_vectorizer.fit_transform(movies_df["overview"].fillna(""))  # Use 'overview' instead of 'description'
 
-y = movies_df["imdb_rating"].fillna(movies_df["imdb_rating"].mean())  # Handle missing ratings
+y = movies_df["score"].fillna(movies_df["score"].mean())  # Use 'score' for IMDb rating
 
 # ✅ Split data into train & test sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X.toarray(), y, test_size=0.2, random_state=42)
 
-# ✅ Train a Linear Regression model
-regressor = LinearRegression()
-regressor.fit(X_train, y_train)
+# ✅ Train a Linear Discriminant Analysis model
+lda = LinearDiscriminantAnalysis()
+lda.fit(X_train, y_train)
 
 def get_movie_details(movie_name):
-    movie = movies_df[movies_df["title"].str.contains(movie_name, case=False, na=False)]
+    movie = movies_df[movies_df["orig_title"].str.contains(movie_name, case=False, na=False)]  # Use 'orig_title'
     if not movie.empty:
         return movie.iloc[0]  # Return first match
     return None
@@ -37,13 +37,13 @@ def analyze_sentiment(text):
     return TextBlob(text).sentiment.polarity if text else 0
 
 def recommend_movies(movie_title, num_recommendations=5):
-    idx = movies_df[movies_df["title"].str.contains(movie_title, case=False, na=False)].index
+    idx = movies_df[movies_df["orig_title"].str.contains(movie_title, case=False, na=False)].index
     if not idx.empty:
         idx = idx[0]
         cosine_sim = cosine_similarity(X, X)
         sim_scores = list(enumerate(cosine_sim[idx]))
         sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:num_recommendations + 1]
-        return [movies_df.iloc[i[0]]["title"] for i in sim_scores]
+        return [movies_df.iloc[i[0]]["orig_title"] for i in sim_scores]
     return []
 
 # ✅ Streamlit UI
@@ -58,19 +58,25 @@ if st.button("Search"):
         movie_details = get_movie_details(movie_name)
         if movie_details is not None:
             st.subheader("📌 Movie Details")
-            st.write(f"**Title:** {movie_details['title']}")
-            st.write(f"**Year:** {movie_details['year']}")
-            st.write(f"**IMDb Rating:** {movie_details['imdb_rating']}")
-            st.write(f"**Cast:** {movie_details['cast']}")
-            st.write(f"**Description:** {movie_details['description']}")
+            st.write(f"**Title:** {movie_details['orig_title']}")
+            st.write(f"**Year:** {movie_details['date_x']}")
+            st.write(f"**Genre:** {movie_details['genre']}")
+            st.write(f"**IMDb Rating:** {movie_details['score']}")
+            st.write(f"**Cast & Crew:** {movie_details['crew']}")
+            st.write(f"**Overview:** {movie_details['overview']}")
+            st.write(f"**Status:** {movie_details['status']}")
+            st.write(f"**Original Language:** {movie_details['orig_lang']}")
+            st.write(f"**Budget:** ${movie_details['budget_x']:,}")
+            st.write(f"**Revenue:** ${movie_details['revenue']:,}")
+            st.write(f"**Country:** {movie_details['country']}")
 
             # ✅ Sentiment Analysis
-            sentiment_score = analyze_sentiment(movie_details["description"])
-            st.write(f"**Description Sentiment Score:** {sentiment_score:.2f}")
+            sentiment_score = analyze_sentiment(movie_details["overview"])
+            st.write(f"**Overview Sentiment Score:** {sentiment_score:.2f}")
 
-            # ✅ Predict IMDb Rating using Linear Regression
-            movie_tfidf = tfidf_vectorizer.transform([movie_details["description"]])
-            predicted_rating = regressor.predict(movie_tfidf)[0]
+            # ✅ Predict IMDb Rating using Linear Discriminant Analysis
+            movie_tfidf = tfidf_vectorizer.transform([movie_details["overview"]]).toarray()
+            predicted_rating = lda.predict(movie_tfidf)[0]
             st.write(f"**Predicted IMDb Rating:** {predicted_rating:.2f}")
 
             # ✅ Recommendations
