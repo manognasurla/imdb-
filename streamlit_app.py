@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
 
@@ -35,7 +35,7 @@ for col in x.select_dtypes(include=['object']).columns:
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
 
 # Train LDA model
-lda = LinearDiscriminantAnalysis()
+lda = LogisticRegression()
 lda.fit(x_train, y_train)
 
 # Streamlit UI
