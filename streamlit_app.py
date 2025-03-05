@@ -1,85 +1,93 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from textblob import TextBlob
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
-import streamlit as st
+from sklearn.linear_model import LinearRegression
 
-try:
-    import sklearn
-    st.write(f"✅ scikit-learn Version: {sklearn.__version__}")
-    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-    st.write("✅ LinearDiscriminantAnalysis is working!")
-except ImportError as e:
-    st.error(f"❌ ImportError: {e}")
-except ModuleNotFoundError as e:
-    st.error(f"❌ ModuleNotFoundError: {e}")
+# ✅ Load IMDb Movie Dataset (From Kaggle CSV)
+@st.cache_data
+def load_movie_data():
+    return pd.read_csv("imdb_movies.csv")  # Ensure this file is in your repo
 
-# Load IMDb dataset
-try:
-    df = pd.read_csv("imdb_movies.csv")
-except FileNotFoundError:
-    st.error("Dataset 'imdb_movies.csv' not found. Please upload the correct file.")
-    st.stop()
+movies_df = load_movie_data()
 
-# Preprocess data
-scaler = StandardScaler()
-numerical_features = ["budget_x", "revenue"]
-df[numerical_features] = scaler.fit_transform(df[numerical_features])
+# ✅ Preprocessing: Convert text descriptions into numerical features
+tfidf_vectorizer = TfidfVectorizer(stop_words="english")
+X = tfidf_vectorizer.fit_transform(movies_df["description"].fillna(""))
 
-# Categorize 'score' into 'low', 'medium', 'high'
-df['score_category'] = pd.cut(df['score'], bins=[-float('inf'), 5, 7, float('inf')], labels=['low', 'medium', 'high'])
+y = movies_df["imdb_rating"].fillna(movies_df["imdb_rating"].mean())  # Handle missing ratings
 
-# Select features and target
-x = df[["budget_x", "revenue", 'names', 'date_x', 'country']]
-y = df["score_category"]
+# ✅ Split data into train & test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Encode categorical variables
-label_encoders = {}
-for col in x.select_dtypes(include=['object']).columns:
-    le = LabelEncoder()
-    x[col] = le.fit_transform(x[col].astype(str))
-    label_encoders[col] = le
+# ✅ Train a Linear Regression model
+regressor = LinearRegression()
+regressor.fit(X_train, y_train)
 
-# Split data into training and testing sets
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
+def get_movie_details(movie_name):
+    movie = movies_df[movies_df["title"].str.contains(movie_name, case=False, na=False)]
+    if not movie.empty:
+        return movie.iloc[0]  # Return first match
+    return None
 
-# Train LDA model
-lda = LinearDiscriminantAnalysis()
-lda.fit(x_train, y_train)
+def analyze_sentiment(text):
+    return TextBlob(text).sentiment.polarity if text else 0
 
-# Streamlit UI
-st.title("🎬 IMDb Movie Score Prediction")
-st.write("Enter movie details to predict its IMDb score category (Low, Medium, High).")
+def recommend_movies(movie_title, num_recommendations=5):
+    idx = movies_df[movies_df["title"].str.contains(movie_title, case=False, na=False)].index
+    if not idx.empty:
+        idx = idx[0]
+        cosine_sim = cosine_similarity(X, X)
+        sim_scores = list(enumerate(cosine_sim[idx]))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:num_recommendations + 1]
+        return [movies_df.iloc[i[0]]["title"] for i in sim_scores]
+    return []
 
-# User input fields
-budget = st.number_input("💰 Budget ($)", min_value=0.0, step=100000.0)
-revenue = st.number_input("📈 Revenue ($)", min_value=0.0, step=100000.0)
-name = st.text_input("🎞 Movie Name")
-date = st.text_input("📅 Release Date (YYYY-MM-DD)")
-country = st.text_input("🌍 Country")
+# ✅ Streamlit UI
+st.title("🎬 AI Smart Movie Assistant with IMDb Rating Prediction")
+st.write("Search for a movie and get details, reviews, sentiment analysis, recommendations, and predicted IMDb rating!")
 
-# Convert inputs using label encoders if necessary
-def encode_value(column, value):
-    if value in label_encoders[column].classes_:
-        return label_encoders[column].transform([value])[0]
+# ✅ User Input
+movie_name = st.text_input("Enter a movie name", "")
+
+if st.button("Search"):
+    if movie_name:
+        movie_details = get_movie_details(movie_name)
+        if movie_details is not None:
+            st.subheader("📌 Movie Details")
+            st.write(f"**Title:** {movie_details['title']}")
+            st.write(f"**Year:** {movie_details['year']}")
+            st.write(f"**IMDb Rating:** {movie_details['imdb_rating']}")
+            st.write(f"**Cast:** {movie_details['cast']}")
+            st.write(f"**Description:** {movie_details['description']}")
+
+            # ✅ Sentiment Analysis
+            sentiment_score = analyze_sentiment(movie_details["description"])
+            st.write(f"**Description Sentiment Score:** {sentiment_score:.2f}")
+
+            # ✅ Predict IMDb Rating using Linear Regression
+            movie_tfidf = tfidf_vectorizer.transform([movie_details["description"]])
+            predicted_rating = regressor.predict(movie_tfidf)[0]
+            st.write(f"**Predicted IMDb Rating:** {predicted_rating:.2f}")
+
+            # ✅ Recommendations
+            similar_movies = recommend_movies(movie_name)
+            if similar_movies:
+                st.subheader("🎥 Similar Movies")
+                st.write(", ".join(similar_movies))
+            else:
+                st.write("❌ No similar movies found.")
+
+        else:
+            st.error("❌ Movie not found! Showing similar movies...")
+            similar_movies = recommend_movies(movie_name)
+            if similar_movies:
+                st.write("🎥 Recommended Similar Movies:")
+                st.write(", ".join(similar_movies))
+            else:
+                st.write("❌ No recommendations available.")
     else:
-        return -1  # Assign an unknown value indicator
-
-if st.button("🔍 Predict Score Category"):
-    if not name or not date or not country:
-        st.warning("Please fill in all fields before predicting.")
-    else:
-        name_encoded = encode_value('names', name)
-        date_encoded = encode_value('date_x', date)
-        country_encoded = encode_value('country', country)
-        
-        # Prepare input data for prediction
-        user_input = np.array([[budget, revenue, name_encoded, date_encoded, country_encoded]])
-        user_input[:, :2] = scaler.transform(user_input[:, :2])  # Scale numerical features
-        
-        # Make prediction
-        prediction = lda.predict(user_input)[0]
-        st.success(f"🎯 Predicted IMDb Score Category: **{prediction}**")
+        st.warning("⚠️ Please enter a movie name.")
