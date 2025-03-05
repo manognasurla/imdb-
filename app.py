@@ -8,6 +8,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
 # ✅ Load IMDb Movie Dataset
 @st.cache_data
+streamlit cache clear
 def load_movie_data():
     try:
         df = pd.read_csv("imdb_movies.csv")  # Ensure this file exists
