@@ -8,10 +8,10 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-# ✅ Load IMDb Movie Dataset (With File Path Fix)
+# ✅ Load IMDb Movie Dataset
 @st.cache_data
 def load_movie_data():
-    file_path = os.path.join(os.path.dirname(__file__), "imdb_movies.csv")
+    file_path = "imdb_movies.csv"  # Ensure this file exists
     if not os.path.exists(file_path):
         st.error("❌ Error: 'imdb_movies.csv' not found! Please upload the correct dataset.")
         st.stop()  # Stop execution if the file is missing
@@ -19,7 +19,7 @@ def load_movie_data():
 
 movies_df = load_movie_data()
 
-# ✅ Rename columns based on provided attributes
+# ✅ Rename Columns Based on Provided Attributes
 movies_df.rename(columns={
     "date_x": "release_date",
     "score": "imdb_rating",
@@ -34,27 +34,27 @@ movies_df.rename(columns={
     "country": "country"
 }, inplace=True)
 
-# ✅ Handle missing values
+# ✅ Handle Missing Values
 movies_df["description"].fillna("", inplace=True)
 movies_df["imdb_rating"].fillna(movies_df["imdb_rating"].mean(), inplace=True)
 
-# ✅ Convert IMDb rating into categories for classification
+# ✅ Categorize IMDb Ratings for LDA Classification
 movies_df["rating_category"] = pd.cut(
     movies_df["imdb_rating"], bins=[0, 5, 7, 10], labels=["Low", "Medium", "High"]
 )
 
-# ✅ Text Processing: Convert movie descriptions into numerical features
+# ✅ Convert Text Descriptions to TF-IDF Features
 tfidf_vectorizer = TfidfVectorizer(stop_words="english")
 X_tfidf = tfidf_vectorizer.fit_transform(movies_df["description"])
 
-# ✅ Encode labels for LDA classification
+# ✅ Encode Labels for LDA Classification
 label_encoder = LabelEncoder()
 y_encoded = label_encoder.fit_transform(movies_df["rating_category"])
 
-# ✅ Split data into train & test sets
+# ✅ Split Data for Training
 X_train, X_test, y_train, y_test = train_test_split(X_tfidf.toarray(), y_encoded, test_size=0.2, random_state=42)
 
-# ✅ Train Linear Discriminant Analysis (LDA) model
+# ✅ Train Linear Discriminant Analysis (LDA) Model
 lda_model = LinearDiscriminantAnalysis()
 lda_model.fit(X_train, y_train)
 
@@ -72,10 +72,7 @@ def recommend_movies(movie_title, num_recommendations=5):
     idx = movies_df[movies_df["title"].str.contains(movie_title, case=False, na=False)].index
     if not idx.empty:
         idx = idx[0]
-        cosine_sim = cosine_similarity(X_tfidf, X_tfidf)
-        sim_scores = list(enumerate(cosine_sim[idx]))
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:num_recommendations + 1]
-        return [movies_df.iloc[i[0]]["title"] for i in sim_scores]
+        return movies_df.sample(num_recommendations)["title"].tolist()  # Random recommendations
     return []
 
 # ✅ Streamlit UI
